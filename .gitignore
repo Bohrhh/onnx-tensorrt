@@ -22,3 +22,6 @@ __pycache__/
 
 # Build
 build
+data
+docker.sh
+
