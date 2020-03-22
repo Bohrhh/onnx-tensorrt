@@ -24,4 +24,4 @@ __pycache__/
 build
 data
 docker.sh
-
+.vscode

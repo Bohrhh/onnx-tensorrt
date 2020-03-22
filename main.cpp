@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
   }else
   {
     cerr << "------ERROR: failed to load onnx!" << endl;
-    return 0;
+    return -1;
   }
   
 
@@ -124,7 +124,7 @@ int main(int argc, char* argv[]) {
   }else
   {
     cerr << "------ERROR: failed to parser onnx to tensorrt network!" << endl;
-    return 0;
+    return -1;
   }
 
 
@@ -133,11 +133,14 @@ int main(int argc, char* argv[]) {
 // -------------------------------------------------------------------------
   if (!Tparams.layer_info.empty())
   {
-    if(TBackend.layerInfo())
+    if(TBackend.layerInfo()){
       cout << "------PASSED: generate network tensor names successfully! Writing: " << Tparams.layer_info << endl;
-    else
+      return 0;
+    }
+    else{
       cerr << "------ERROR: failed to export network tensor names!" << endl;
-    return 0;
+      return -1;
+    }
   }
 
 
@@ -146,14 +149,16 @@ int main(int argc, char* argv[]) {
 // -------------------------------------------------------------------------
   if (!Tparams.engine_filename.empty())
   {
-    if(TBackend.build())
+    if(TBackend.build()){
       cout << "------PASSED: generate the engine successfully!" << endl;
-    else
+      return 0;
+    }
+    else{
       cerr << "------ERROR: failed to build the engine!" << endl;
-    return 0;
+      return -1;
+    }
   }
 
-    
   
   return 0;
 }
