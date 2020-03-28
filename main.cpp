@@ -100,6 +100,37 @@ int main(int argc, char* argv[]) {
   TRTBackend TBackend(Tparams);
 
 
+  // const std::string pluginName = "InstanceNormalization_TRT";
+  // const std::string pluginVersion = "001";
+  // const auto mPluginRegistry = getPluginRegistry();
+
+  // int numplugin=0;
+  // auto pluginlist = mPluginRegistry->getPluginCreatorList(&numplugin);
+  // if (!pluginlist){
+  //   cerr << "get pluginlist error!"<<endl;
+  //   return -1;
+  // }
+  // else{
+  //   cout << "get pluginlist successfully!"<<endl;
+  //   cout << "there are " << numplugin << " plugins" <<endl;
+  //   for(int i=0; i<numplugin; ++i)
+  //     cout<<"name:"<<pluginlist[i]->getPluginName()<<"  version:"<<pluginlist[i]->getPluginVersion()<<endl;
+  //   return 0;
+  // }
+
+  // const auto pluginCreator
+  //     = mPluginRegistry->getPluginCreator(pluginName.c_str(), pluginVersion.c_str(), "");
+
+  // if (!pluginCreator){
+  //   cerr << "InstanceNormalization plugin was not found in the plugin registry!"<<endl;
+  //   return -1;
+  // }
+  // else{
+  //   cout << "InstanceNormalization plugin was found in the plugin registry!"<<endl;
+  //   return 0;
+  // }
+
+
 
 // -------------------------------------------------------------------------
 // load onnx model

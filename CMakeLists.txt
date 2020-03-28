@@ -100,6 +100,8 @@ if(NOT TARGET onnx_proto)
   add_subdirectory(third_party/onnx EXCLUDE_FROM_ALL)
 endif()
 
+
+
 # TensorRT
 find_path(TENSORRT_INCLUDE_DIR NvInfer.h
   HINTS ${TENSORRT_ROOT} ${CUDA_TOOLKIT_ROOT_DIR}
@@ -109,8 +111,10 @@ find_library(TENSORRT_LIBRARY_INFER nvinfer
   HINTS ${TENSORRT_ROOT} ${TENSORRT_BUILD} ${CUDA_TOOLKIT_ROOT_DIR}
   PATH_SUFFIXES lib lib64 lib/x64)
 find_library(TENSORRT_LIBRARY_INFER_PLUGIN nvinfer_plugin
-  HINTS  ${TENSORRT_ROOT} ${TENSORRT_BUILD} ${CUDA_TOOLKIT_ROOT_DIR}
+  HINTS  ${TENSORRT_PLUGINS} ${TENSORRT_BUILD} ${CUDA_TOOLKIT_ROOT_DIR}
   PATH_SUFFIXES lib lib64 lib/x64)
+# set(TENSORRT_LIBRARY_INFER_PLUGIN "${ONNX2TRT_ROOT}/../TensorRT/build/out/libnvinfer_plugin.so")
+
 if(WIN32)
   find_library(TENSORRT_LIBRARY_MYELIN myelin64_1
     HINTS  ${TENSORRT_ROOT} ${TENSORRT_BUILD} ${CUDA_TOOLKIT_ROOT_DIR}
@@ -127,6 +131,7 @@ find_package_handle_standard_args(
 if(NOT TENSORRT_FOUND)
   message(ERROR "Cannot find TensorRT library.")
 endif()
+
 
 # --------------------------------
 # Importer library

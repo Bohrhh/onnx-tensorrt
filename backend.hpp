@@ -25,6 +25,7 @@ struct TRTBackendParams
   std::string engine_filename;
   std::string layer_info;
   std::string dynamic_range_file;
+  std::string input_figures;
   size_t max_batch_size = 32;
   size_t max_workspace_size = 1 << 30;
   int model_dtype_nbits = 32;
@@ -71,6 +72,12 @@ public:
   // using builder to optimize network and generate engine
   // -------------------------------------------------------------------------
   bool build();
+
+
+  // -------------------------------------------------------------------------
+  // deserializing an engine and doing inference
+  // -------------------------------------------------------------------------
+  bool inference();
 
 
   // -------------------------------------------------------------------------
@@ -476,6 +483,9 @@ bool TRTBackend::build()
       cerr << "------ERROR: unable to build cuda engine." << endl;
       return false;
   }
+
+  // inference
+  
 
 
   // serialize the engine

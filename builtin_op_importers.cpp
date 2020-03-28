@@ -2464,8 +2464,10 @@ DEFINE_BUILTIN_OP_IMPORTER(Resize)
             auto* resizeShape = &convertToTensor(inputs.at(3), ctx);
             layer->setInput(1, *resizeShape);
             layer->setResizeMode(resizeMode);
-            if (transformationMode=="align_corners")
+            if (transformationMode=="align_corners"){
                 layer->setAlignCorners(true);
+            }
+                
             RETURN_FIRST_OUTPUT(layer);
         }
     }
@@ -2489,6 +2491,34 @@ DEFINE_BUILTIN_OP_IMPORTER(Resize)
         layer->setAlignCorners(true);
     RETURN_FIRST_OUTPUT(layer);
 }
+
+
+DEFINE_BUILTIN_OP_IMPORTER(ResizeKM)
+{
+    // nvinfer1::ITensor& input = convertToTensor(inputs.at(0), ctx);
+    nvinfer1::ITensor* input = &convertToTensor(inputs.at(0), ctx);
+    // TRT does not support INT32 nor BOOL input types for this node
+    ASSERT(input->getType() != nvinfer1::DataType::kINT32 && input->getType() != nvinfer1::DataType::kBOOL, ErrorCode::kUNSUPPORTED_NODE);
+    int inputRank = input->getDimensions().nbDims;
+    ASSERT(inputRank > 0, ErrorCode::kUNSUPPORTED_NODE);
+
+    // Populate instanceNormalization plugin properties.
+    const std::string pluginName = "ResizeNearest_TRT";
+    const std::string pluginVersion = "1";
+    std::vector<nvinfer1::PluginField> f;
+    float scale = 2.0;
+    f.emplace_back("scale", &scale, nvinfer1::PluginFieldType::kFLOAT32, 1);
+
+    // Create plugin from registry
+    nvinfer1::IPluginV2* plugin = importPluginFromRegistry(ctx, pluginName, pluginVersion, node.name(), f);
+
+    ASSERT(plugin != nullptr && "ResizeKM plugin was not found in the plugin registry!",
+        ErrorCode::kUNSUPPORTED_NODE);
+
+    RETURN_FIRST_OUTPUT(ctx->network()->addPluginV2(&input, 1, *plugin));
+
+}
+
 
 DEFINE_BUILTIN_OP_IMPORTER(RNN)
 {
