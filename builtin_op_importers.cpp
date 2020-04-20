@@ -351,10 +351,12 @@ DEFINE_BUILTIN_OP_IMPORTER(Clip)
                 auto min = inputs.at(1).weights();
                 alpha = static_cast<float*>(min.values)[0];
             }
+            if (inputs.at(2)){
+                ASSERT(inputs.at(2).is_weights() && "Clip max value must be an initializer!", ErrorCode::kUNSUPPORTED_NODE);
+                auto max = inputs.at(2).weights();
+                beta = static_cast<float*>(max.values)[0];
+            }
 
-            ASSERT(inputs.at(2).is_weights() && "Clip max value must be an initializer!", ErrorCode::kUNSUPPORTED_NODE);
-            auto max = inputs.at(2).weights();
-            beta = static_cast<float*>(max.values)[0];
         }
     }
     else
@@ -728,6 +730,39 @@ NodeImportResult depthToSpaceDynamicImporter(
     RETURN_FIRST_OUTPUT(secondShuffle);
 }
 
+
+DEFINE_BUILTIN_OP_IMPORTER(CostVolume)
+{   
+
+    nvinfer1::ITensor* left_feat = &convertToTensor(inputs.at(0), ctx);
+    nvinfer1::ITensor* right_feat = &convertToTensor(inputs.at(1), ctx);
+    std::vector<nvinfer1::ITensor*> tensors;
+    tensors.push_back(left_feat);
+    tensors.push_back(right_feat);
+
+    ASSERT(left_feat->getType() == nvinfer1::DataType::kFLOAT && right_feat->getType() == nvinfer1::DataType::kFLOAT, ErrorCode::kUNSUPPORTED_NODE);
+    OnnxAttrs attrs(node, ctx);
+    int max_disparity = attrs.get<int>("max_disparity", 0);
+    int stride = attrs.get<int>("stride", 0);
+    ASSERT(max_disparity>0 && stride>0 && max_disparity%stride==0, ErrorCode::kUNSUPPORTED_NODE);
+
+    const std::string pluginName = "CostVolume_TRT";
+    const std::string pluginVersion = "001";
+    std::vector<nvinfer1::PluginField> f;
+    f.emplace_back("max_disparity", &max_disparity, nvinfer1::PluginFieldType::kINT32, 1);
+    f.emplace_back("stride", &stride, nvinfer1::PluginFieldType::kINT32, 1);
+
+    // Create plugin from registry
+    nvinfer1::IPluginV2* plugin = importPluginFromRegistry(ctx, pluginName, pluginVersion, node.name(), f);
+    ASSERT(plugin != nullptr && "CostVolume plugin was not found in the plugin registry!",
+        ErrorCode::kUNSUPPORTED_NODE);
+
+    RETURN_FIRST_OUTPUT(ctx->network()->addPluginV2(tensors.data(), tensors.size(), *plugin));
+
+}
+
+
+
 DEFINE_BUILTIN_OP_IMPORTER(DepthToSpace)
 {
     // Input tensor is in NCHW format
@@ -950,6 +985,35 @@ DEFINE_BUILTIN_OP_IMPORTER(Gather)
     LOG_VERBOSE("Using Gather axis: " << axis);
     RETURN_FIRST_OUTPUT(ctx->network()->addGather(data, indices, axis));
 }
+
+
+DEFINE_BUILTIN_OP_IMPORTER(GatherElements)
+{   
+
+    nvinfer1::ITensor* inputData = &convertToTensor(inputs.at(0), ctx);
+    nvinfer1::ITensor* inputIndex = &convertToTensor(inputs.at(1), ctx);
+    std::vector<nvinfer1::ITensor*> tensors;
+    tensors.push_back(inputData);
+    tensors.push_back(inputIndex);
+
+    ASSERT(inputData->getType() == nvinfer1::DataType::kFLOAT && inputIndex->getType() == nvinfer1::DataType::kINT32, ErrorCode::kUNSUPPORTED_NODE);
+    OnnxAttrs attrs(node, ctx);
+    int axis = attrs.get<int>("axis", 0);
+
+    const std::string pluginName = "GatherElements_TRT";
+    const std::string pluginVersion = "001";
+    std::vector<nvinfer1::PluginField> f;
+    f.emplace_back("axis", &axis, nvinfer1::PluginFieldType::kINT32, 1);
+
+    // Create plugin from registry
+    nvinfer1::IPluginV2* plugin = importPluginFromRegistry(ctx, pluginName, pluginVersion, node.name(), f);
+    ASSERT(plugin != nullptr && "GatherElements plugin was not found in the plugin registry!",
+        ErrorCode::kUNSUPPORTED_NODE);
+
+    RETURN_FIRST_OUTPUT(ctx->network()->addPluginV2(tensors.data(), tensors.size(), *plugin));
+
+}
+
 
 DEFINE_BUILTIN_OP_IMPORTER(Gemm)
 {
@@ -2449,7 +2513,7 @@ DEFINE_BUILTIN_OP_IMPORTER(Resize)
 
     if (ctx->getOpsetVersion() >= 11)
     {
-        ASSERT(((transformationMode == "asymmetric") || (transformationMode == "align_corners")) && "This version of TensorRT only supports asymmetric resize!",
+        ASSERT(((transformationMode == "asymmetric") || (transformationMode == "align_corners")) && "This version of TensorRT only supports asymmetric and align_corners resize!",
             ErrorCode::kUNSUPPORTED_NODE);
         ASSERT(mode != "cubic" && "This version of TensorRT does not support cubic interpolation!",
             ErrorCode::kUNSUPPORTED_NODE);

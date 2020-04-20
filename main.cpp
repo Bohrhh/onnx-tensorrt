@@ -45,7 +45,7 @@ void print_usage() {
        << "                [-o engine_file.trt]  (output TensorRT engine)" << "\n"
        << "                [-b max_batch_size (default 32)]" << "\n"
        << "                [-w max_workspace_size_bytes (default 1 GiB)]" << "\n"
-       << "                [-d model_data_type_bit_depth] (32 => float32, 16 => float16)" << "\n"
+       << "                [-d model_data_type_bit_depth] (32 => float32, 16 => float16, 8 => int8)" << "\n"
        << "                [-D dynamic_range_file] (file for setting dynamic range)" << "\n"
        << "                [-l] (list network tensor names)" << "\n"
        << "                [-g] (debug mode)" << "\n"

@@ -31,7 +31,6 @@ struct TRTBackendParams
   int model_dtype_nbits = 32;
   int verbosity = (int)nvinfer1::ILogger::Severity::kWARNING;
   bool debug_builder = false;
-
 };
 
 
@@ -388,7 +387,10 @@ void TRTBackend::setLayerPrecision()
                 && layer->getType() != nvinfer1::LayerType::kSHAPE
                 && layer->getType() != nvinfer1::LayerType::kSLICE
                 && layer->getType() != nvinfer1::LayerType::kGATHER
-                && layer->getType() != nvinfer1::LayerType::kSHUFFLE)
+                && layer->getType() != nvinfer1::LayerType::kSHUFFLE
+                && layer->getType() != nvinfer1::LayerType::kIDENTITY
+                && layer->getType() != nvinfer1::LayerType::kPLUGIN
+                && layer->getType() != nvinfer1::LayerType::kPLUGIN_V2)
         {
             // set computation precision of the layer
             layer->setPrecision(nvinfer1::DataType::kINT8);
