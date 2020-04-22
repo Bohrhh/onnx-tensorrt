@@ -874,6 +874,38 @@ DEFINE_BUILTIN_OP_IMPORTER(Div)
     return elementwiseHelper(ctx, node, inputs, nvinfer1::ElementWiseOperation::kDIV);
 }
 
+
+DEFINE_BUILTIN_OP_IMPORTER(DeepprunerCostVolume)
+{   
+
+    nvinfer1::ITensor* left_feat = &convertToTensor(inputs.at(0), ctx);
+    nvinfer1::ITensor* right_feat = &convertToTensor(inputs.at(1), ctx);
+    nvinfer1::ITensor* disparity = &convertToTensor(inputs.at(2), ctx);
+    std::vector<nvinfer1::ITensor*> tensors;
+    tensors.push_back(left_feat);
+    tensors.push_back(right_feat);
+    tensors.push_back(disparity);
+
+    ASSERT(left_feat->getType() == nvinfer1::DataType::kFLOAT && \
+           right_feat->getType() == nvinfer1::DataType::kFLOAT && \
+           disparity->getType() == nvinfer1::DataType::kINT32, ErrorCode::kUNSUPPORTED_NODE);
+
+    const std::string pluginName = "DeepprunerCostVolume_TRT";
+    const std::string pluginVersion = "001";
+    std::vector<nvinfer1::PluginField> f;
+
+    // Create plugin from registry
+    nvinfer1::IPluginV2* plugin = importPluginFromRegistry(ctx, pluginName, pluginVersion, node.name(), f);
+    ASSERT(plugin != nullptr && "CostVolume plugin was not found in the plugin registry!",
+        ErrorCode::kUNSUPPORTED_NODE);
+
+    RETURN_FIRST_OUTPUT(ctx->network()->addPluginV2(tensors.data(), tensors.size(), *plugin));
+
+}
+
+
+
+
 DEFINE_BUILTIN_OP_IMPORTER(Dropout)
 {
     int noutputs = node.output().size();
