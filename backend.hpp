@@ -1,3 +1,8 @@
+/*
+Auther: kmlee
+Date: 20200424
+*/
+
 #include "NvOnnxParser.h"
 #include "onnx_utils.hpp"
 #include "common.hpp"
@@ -63,7 +68,7 @@ public:
   // -------------------------------------------------------------------------
   // required by quantization
   // -------------------------------------------------------------------------
-  void setLayerPrecision();
+  bool setLayerPrecision();
   bool setDynamicRange();
   
 
@@ -99,7 +104,8 @@ public:
 private:
 
   ::ONNX_NAMESPACE::ModelProto onnx_model;
-  common::TRT_Logger trt_logger;
+  common::TRT_Logger trt_logger = common::TRT_Logger(nvinfer1::ILogger::Severity::kERROR);
+  // common::TRT_Logger trt_logger;
   std::shared_ptr<nvinfer1::IBuilder> trt_builder = common::infer_object(nvinfer1::createInferBuilder(trt_logger));
   std::shared_ptr<nvinfer1::INetworkDefinition> trt_network = common::infer_object(trt_builder->createNetworkV2(1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
   std::shared_ptr<nvonnxparser::IParser> trt_parser  = common::infer_object(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -113,13 +119,13 @@ private:
 
 bool TRTBackend::loadOnnxModel(){
   if (!std::ifstream(Tparams.onnx_filename.c_str())) {
-    cerr << "------ERROR: input file not found, " << Tparams.onnx_filename << endl;
+    cerr << "------ERROR: Input file is not found, " << Tparams.onnx_filename << endl;
     return false;
   }
 
   bool is_binary = common::ParseFromFile_WAR(&onnx_model, Tparams.onnx_filename.c_str());
   if( !is_binary && !common::ParseFromTextFile(&onnx_model, Tparams.onnx_filename.c_str()) ) {
-    cerr << "------ERROR: failed to parse ONNX model" << endl;
+    cerr << "------ERROR: Failed to parse ONNX model" << endl;
     return false;
   }
   return true;
@@ -130,26 +136,20 @@ void TRTBackend::onnxInfo(){
 
   int64_t opset_version = (onnx_model.opset_import().size() ?
                             onnx_model.opset_import(0).version() : 0);
-  cout << "----------------------------------------------------------------" << endl;
-  cout << "Input filename:   " << Tparams.onnx_filename << endl;
-  cout << "ONNX IR version:  " << common::onnx_ir_version_string(onnx_model.ir_version()) << endl;
-  cout << "Opset version:    " << opset_version << endl;
-  cout << "Producer name:    " << onnx_model.producer_name() << endl;
-  cout << "Producer version: " << onnx_model.producer_version() << endl;
-  cout << "Domain:           " << onnx_model.domain() << endl;
-  cout << "Model version:    " << onnx_model.model_version() << endl;
-  cout << "Doc string:       " << onnx_model.doc_string() << endl;
-  cout << "----------------------------------------------------------------" << endl;
+  cout << "------INFO: " << endl;
+  cout << "      Input filename:   " << Tparams.onnx_filename << endl;
+  cout << "      ONNX IR version:  " << common::onnx_ir_version_string(onnx_model.ir_version()) << endl;
+  cout << "      Opset version:    " << opset_version << endl;
+  cout << "      Producer name:    " << onnx_model.producer_name() << endl;
+  cout << "      Producer version: " << onnx_model.producer_version() << endl;
+  cout << "      Domain:           " << onnx_model.domain() << endl;
+  cout << "      Model version:    " << onnx_model.model_version() << endl;
+  cout << "      Doc string:       " << onnx_model.doc_string() << endl;
           
 }
 
 
 bool TRTBackend::parserOnnx(){
-
-  if( Tparams.verbosity >= (int)nvinfer1::ILogger::Severity::kWARNING ) {
-    cout << "---------------------- Parsing Onnx Model ----------------------" << endl;
-  }
-
 
   std::ifstream onnx_file(Tparams.onnx_filename.c_str(),
                           std::ios::binary | std::ios::ate);
@@ -194,9 +194,9 @@ bool TRTBackend::parserOnnx(){
 
 bool TRTBackend::layerInfo(){
   if( !Tparams.layer_info.empty() ){
-    cout << "In order to run Int8 inference without calibration, "
-            "user will need to provide dynamic range for all the network tensors."
-            << endl;
+    cout << "------INFO: In order to run Int8 inference without calibration, " << endl;
+    cout << "            users are supposed to provide dynamic range" << endl;
+    cout << "            for all the network tensors." << endl;
 
     std::ofstream tensorsFile{Tparams.layer_info};
 
@@ -204,21 +204,21 @@ bool TRTBackend::layerInfo(){
     for (int i = 0; i < trt_network->getNbInputs(); ++i)
     {
         std::string tName = trt_network->getInput(i)->getName();
-        tensorsFile << "TensorName: " << tName << endl;
+        tensorsFile << "InputTensor: " << tName << endl;
     }
 
     // Iterate through network layers.
     for (int i = 0; i < trt_network->getNbLayers(); ++i)
     {
         // Write output tensors of a layer to the file.
-        for (int j = 0; j < trt_network->getLayer(i)->getNbOutputs(); ++j)
+        auto layer = trt_network->getLayer(i);
+        for (int j = 0; j < layer->getNbOutputs(); ++j)
         {
-            std::string tName = trt_network->getLayer(i)->getOutput(j)->getName();
-            tensorsFile << "TensorName: " << tName << endl;
+            std::string tName = layer->getOutput(j)->getName();
+            tensorsFile << layer->getName() << ": " << tName << endl;
         }
     }
     tensorsFile.close();
-
     return true;
   }
 
@@ -252,14 +252,58 @@ bool TRTBackend::readPerTensorDynamicRangeValues()
 }
 
 
+bool TRTBackend::setLayerPrecision()
+{
+    for (int i=0; i<trt_network->getNbLayers(); ++i)
+    {
+        auto layer = trt_network->getLayer(i);
+        bool layer_input_quant = true;
+        for (int j=0; j<layer->getNbOutputs(); ++j){
+          std::string tensorName = layer->getOutput(j)->getName();
+          if (mPerTensorDynamicRangeMap.find(tensorName) == mPerTensorDynamicRangeMap.end())
+            layer_input_quant = false;
+        }
+        if (!layer_input_quant)
+          continue;
+
+
+        // Don't set the precision on non-computation layers as they don't suspport
+        // int8.
+        if (layer->getType() != nvinfer1::LayerType::kCONSTANT
+                && layer->getType() != nvinfer1::LayerType::kCONCATENATION
+                && layer->getType() != nvinfer1::LayerType::kSHAPE
+                && layer->getType() != nvinfer1::LayerType::kSLICE
+                && layer->getType() != nvinfer1::LayerType::kGATHER
+                && layer->getType() != nvinfer1::LayerType::kSHUFFLE
+                && layer->getType() != nvinfer1::LayerType::kIDENTITY
+                && layer->getType() != nvinfer1::LayerType::kPLUGIN
+                && layer->getType() != nvinfer1::LayerType::kPLUGIN_V2)
+        {
+          // set computation precision of the layer
+          layer->setPrecision(nvinfer1::DataType::kINT8);
+        }
+
+        for (int j = 0; j < layer->getNbOutputs(); ++j)
+        {
+            std::string tensorName = layer->getOutput(j)->getName();
+            if (Tparams.verbosity>(int)nvinfer1::ILogger::Severity::kWARNING)
+            {
+                std::string tensorName = layer->getOutput(j)->getName();
+                cout << "Tensor: " << tensorName << ". OutputType: INT8" << endl;
+            }
+            // set output type of execution tensors and not shape tensors.
+            if (layer->getOutput(j)->isExecutionTensor())
+            {
+                layer->setOutputType(j, nvinfer1::DataType::kINT8);
+            }
+        }
+    }
+    return true;
+}
+
 
 bool TRTBackend::setDynamicRange()
 {
-    // populate per tensor dynamic range
-    if (!readPerTensorDynamicRangeValues())
-    {
-        return false;
-    }
 
     if (Tparams.verbosity>(int)nvinfer1::ILogger::Severity::kWARNING)
     {
@@ -270,6 +314,7 @@ bool TRTBackend::setDynamicRange()
                     "missing per tensor dynamic range."
                  << endl;
     }
+
     // set dynamic range for network input tensors
     for (int i = 0; i < trt_network->getNbInputs(); ++i)
     {
@@ -294,6 +339,7 @@ bool TRTBackend::setDynamicRange()
         for (int j = 0, e = lyr->getNbOutputs(); j < e; ++j)
         {
             std::string tName = lyr->getOutput(j)->getName();
+              
             if (mPerTensorDynamicRangeMap.find(tName) != mPerTensorDynamicRangeMap.end())
             {
                 // Calibrator generated dynamic range for network tensor can be overriden or set using below API
@@ -336,27 +382,6 @@ bool TRTBackend::setDynamicRange()
         }
     }
 
-    // set dynamic range for layer output tensors
-    for (int i = 0; i < trt_network->getNbLayers(); ++i)
-    {
-        for (int j = 0; j < trt_network->getLayer(i)->getNbOutputs(); ++j)
-        {
-            std::string tName = trt_network->getLayer(i)->getOutput(j)->getName();
-            if (mPerTensorDynamicRangeMap.find(tName) != mPerTensorDynamicRangeMap.end())
-            {
-                // Calibrator generated dynamic range for network tensor can be overriden or set using below API
-                trt_network->getLayer(i)->getOutput(j)->setDynamicRange(
-                    -mPerTensorDynamicRangeMap.at(tName), mPerTensorDynamicRangeMap.at(tName));
-            }
-            else
-            {
-                if (Tparams.verbosity>(int)nvinfer1::ILogger::Severity::kWARNING)
-                {
-                    cout << "------Warning: " << "Missing dynamic range for tensor: " << tName << endl;
-                }
-            }
-        }
-    }
 
     if (Tparams.verbosity>(int)nvinfer1::ILogger::Severity::kWARNING)
     {
@@ -368,110 +393,80 @@ bool TRTBackend::setDynamicRange()
 }
 
 
-
-void TRTBackend::setLayerPrecision()
-{
-    for (int i = 0; i < trt_network->getNbLayers(); ++i)
-    {
-        auto layer = trt_network->getLayer(i);
-        if (Tparams.verbosity>(int)nvinfer1::ILogger::Severity::kWARNING)
-        {
-            std::string layerName = layer->getName();
-            cout << "Layer: " << layerName << ". Precision: INT8" << endl;
-        }
-
-        // Don't set the precision on non-computation layers as they don't support
-        // int8.
-        if (layer->getType() != nvinfer1::LayerType::kCONSTANT
-                && layer->getType() != nvinfer1::LayerType::kCONCATENATION
-                && layer->getType() != nvinfer1::LayerType::kSHAPE
-                && layer->getType() != nvinfer1::LayerType::kSLICE
-                && layer->getType() != nvinfer1::LayerType::kGATHER
-                && layer->getType() != nvinfer1::LayerType::kSHUFFLE
-                && layer->getType() != nvinfer1::LayerType::kIDENTITY
-                && layer->getType() != nvinfer1::LayerType::kPLUGIN
-                && layer->getType() != nvinfer1::LayerType::kPLUGIN_V2)
-        {
-            // set computation precision of the layer
-            layer->setPrecision(nvinfer1::DataType::kINT8);
-        }
-
-        for (int j = 0; j < layer->getNbOutputs(); ++j)
-        {
-            std::string tensorName = layer->getOutput(j)->getName();
-            if (Tparams.verbosity>(int)nvinfer1::ILogger::Severity::kWARNING)
-            {
-                std::string tensorName = layer->getOutput(j)->getName();
-                cout << "Tensor: " << tensorName << ". OutputType: INT8" << endl;
-            }
-            // set output type of execution tensors and not shape tensors.
-            if (layer->getOutput(j)->isExecutionTensor())
-            {
-                layer->setOutputType(j, nvinfer1::DataType::kINT8);
-            }
-        }
-    }
-}
-
-
 bool TRTBackend::build()
 {
-
   nvinfer1::DataType model_dtype;
   if(      Tparams.model_dtype_nbits == 32 ) { model_dtype = nvinfer1::DataType::kFLOAT; }
   else if( Tparams.model_dtype_nbits == 16 ) { model_dtype = nvinfer1::DataType::kHALF; }
   else if( Tparams.model_dtype_nbits ==  8 ) { model_dtype = nvinfer1::DataType::kINT8; }
   else {
-    cerr << "------ERROR: invalid model data type bit depth, " << Tparams.model_dtype_nbits << endl;
+    cerr << "------ERROR: Invalid model data type bit depth, " << Tparams.model_dtype_nbits << endl;
     return false;
   }
 
   auto config = common::infer_object(trt_builder->createBuilderConfig());
   if (!config)
   {
-      cerr << "------ERROR: unable to create config object." << endl;
+      cerr << "------ERROR: Unable to create config object." << endl;
       return false;
   }
 
 
-  bool fp16 = trt_builder->platformHasFastFp16();
   // Configure buider
+  bool fp16 = trt_builder->platformHasFastFp16();
+  if( Tparams.verbosity >= (int)nvinfer1::ILogger::Severity::kWARNING ) {
+    cout << "------INFO: Building TensorRT engine, FP16 available:"<< fp16 << endl;
+    cout << "                Max batch size:     " << Tparams.max_batch_size << endl;
+    cout << "                Max workspace size: " << Tparams.max_workspace_size / (1024. * 1024) << " MiB" << endl;
+  }
   config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
   config->setMaxWorkspaceSize(Tparams.max_workspace_size);
-
-  if( fp16 && model_dtype == nvinfer1::DataType::kHALF)
+  if( fp16 && model_dtype == nvinfer1::DataType::kHALF){
     config->setFlag(nvinfer1::BuilderFlag::kFP16);
-  else if (model_dtype == nvinfer1::DataType::kINT8 && !Tparams.dynamic_range_file.empty()){
-    config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    config->setInt8Calibrator(nullptr);
+    cout << "------INFO: Set fp16 flag." << endl;
   }
+  else if (model_dtype == nvinfer1::DataType::kINT8){
+    if (Tparams.dynamic_range_file.empty()){
+      cerr << "------ERROR: Dynamic range file should be provided in int8 mode." << endl;
+      return false;
+    }
 
+    if (fp16){
+      config->setFlag(nvinfer1::BuilderFlag::kFP16);
+      cout << "------INFO: Set fp16 flag." << endl;
+    }
 
-  if( Tparams.verbosity >= (int)nvinfer1::ILogger::Severity::kWARNING ) {
-    cout << "Building TensorRT engine, FP16 available:"<< fp16 << endl;
-    cout << "    Max batch size:     " << Tparams.max_batch_size << endl;
-    cout << "    Max workspace size: " << Tparams.max_workspace_size / (1024. * 1024) << " MiB" << endl;
+    config->setFlag(nvinfer1::BuilderFlag::kINT8);
+    cout << "------INFO: Set int8 flag." << endl;
+    config->setInt8Calibrator(nullptr);
   }
   trt_builder->setMaxBatchSize(Tparams.max_batch_size);
 
 
-
   // int8 prepare
-  if (Tparams.model_dtype_nbits==8 && !Tparams.dynamic_range_file.empty()){
+  if (model_dtype == nvinfer1::DataType::kINT8){
     // force layer to execute with required precision
-    config->setFlag(nvinfer1::BuilderFlag::kSTRICT_TYPES);
+    // config->setFlag(nvinfer1::BuilderFlag::kSTRICT_TYPES);
+
+    // populate per tensor dynamic range
+    if (!readPerTensorDynamicRangeValues())
+    {
+        cout << "------ERROR: Read per tensor dynamic range values failed!" << endl;
+        return false;
+    }
+    
     setLayerPrecision();
 
     if (setDynamicRange()){
-      cout << "------PASSED: set dynamic range successfully!" << endl;
+      cout << "------PASSED: Set dynamic range successfully!" << endl;
     }
     else{
-      cerr << "------ERROR: failed to set dynamic range!" << endl;
+      cerr << "------ERROR: Failed to set dynamic range!" << endl;
       return false;
     }
   }
-  else if(Tparams.model_dtype_nbits==8 && Tparams.dynamic_range_file.empty()){
-    cerr << "------ERROR: should provide dynamic range file when using int8 mode!" << endl;
+  else if(model_dtype == nvinfer1::DataType::kINT8 && Tparams.dynamic_range_file.empty()){
+    cerr << "------ERROR: Should provide dynamic range file when using int8 mode!" << endl;
     return false;
   }
 
@@ -482,28 +477,24 @@ bool TRTBackend::build()
   auto trt_engine = common::infer_object(trt_builder->buildEngineWithConfig(*trt_network, *config));
   if (!trt_engine)
   {
-      cerr << "------ERROR: unable to build cuda engine." << endl;
+      cerr << "------ERROR: Unable to build cuda engine." << endl;
       return false;
   }
-
-  // inference
   
-
 
   // serialize the engine
   auto engine_plan = common::infer_object(trt_engine->serialize());
   std::ofstream engine_file(Tparams.engine_filename.c_str());
   if (!engine_file) {
-    cerr << "------ERROR: failed to open output file for writing: "
+    cerr << "------ERROR: Failed to open output file for writing: "
           << Tparams.engine_filename << endl;
     return false;
   }
   if( Tparams.verbosity >= (int)nvinfer1::ILogger::Severity::kWARNING ) {
-    cout << "Writing TensorRT engine to " << Tparams.engine_filename << endl;
+    cout << "------INFO: Writing TensorRT engine to " << Tparams.engine_filename << endl;
   }
   engine_file.write((char*)engine_plan->data(), engine_plan->size());
   engine_file.close();
   return true;
-  
   
 }

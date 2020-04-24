@@ -100,48 +100,18 @@ int main(int argc, char* argv[]) {
   TRTBackend TBackend(Tparams);
 
 
-  // const std::string pluginName = "InstanceNormalization_TRT";
-  // const std::string pluginVersion = "001";
-  // const auto mPluginRegistry = getPluginRegistry();
-
-  // int numplugin=0;
-  // auto pluginlist = mPluginRegistry->getPluginCreatorList(&numplugin);
-  // if (!pluginlist){
-  //   cerr << "get pluginlist error!"<<endl;
-  //   return -1;
-  // }
-  // else{
-  //   cout << "get pluginlist successfully!"<<endl;
-  //   cout << "there are " << numplugin << " plugins" <<endl;
-  //   for(int i=0; i<numplugin; ++i)
-  //     cout<<"name:"<<pluginlist[i]->getPluginName()<<"  version:"<<pluginlist[i]->getPluginVersion()<<endl;
-  //   return 0;
-  // }
-
-  // const auto pluginCreator
-  //     = mPluginRegistry->getPluginCreator(pluginName.c_str(), pluginVersion.c_str(), "");
-
-  // if (!pluginCreator){
-  //   cerr << "InstanceNormalization plugin was not found in the plugin registry!"<<endl;
-  //   return -1;
-  // }
-  // else{
-  //   cout << "InstanceNormalization plugin was found in the plugin registry!"<<endl;
-  //   return 0;
-  // }
-
-
 
 // -------------------------------------------------------------------------
 // load onnx model
 // -------------------------------------------------------------------------
+  cout << "\n=================== Loading Onnx Model ===================" << endl;
   if (TBackend.loadOnnxModel())
   {
-    cout << "------PASSED: load onnx successfully!" << endl;
+    cout << "------PASSED: Load onnx successfully!" << endl;
     TBackend.onnxInfo();
   }else
   {
-    cerr << "------ERROR: failed to load onnx!" << endl;
+    cerr << "------ERROR: Failed to load onnx!" << endl;
     return -1;
   }
   
@@ -149,12 +119,13 @@ int main(int argc, char* argv[]) {
 // -------------------------------------------------------------------------
 // parser onnx to tensorrt network
 // -------------------------------------------------------------------------
+  cout << "\n=================== Parsing Onnx Model ===================" << endl;
   if (TBackend.parserOnnx())
   {
-    cout << "------PASSED: parser onnx to tensorrt network successfully!" << endl;
+    cout << "------PASSED: Parser onnx to tensorrt network successfully!" << endl;
   }else
   {
-    cerr << "------ERROR: failed to parser onnx to tensorrt network!" << endl;
+    cerr << "------ERROR: Failed to parser onnx to tensorrt network!" << endl;
     return -1;
   }
 
@@ -164,28 +135,31 @@ int main(int argc, char* argv[]) {
 // -------------------------------------------------------------------------
   if (!Tparams.layer_info.empty())
   {
+    cout << "\n============== Export Network Tensor Names ===============" << endl;
     if(TBackend.layerInfo()){
-      cout << "------PASSED: generate network tensor names successfully! Writing: " << Tparams.layer_info << endl;
+      cout << "------PASSED: Generate network tensor names successfully!" << endl;
+      cout << "              Writing: " << Tparams.layer_info << endl;
       return 0;
     }
     else{
-      cerr << "------ERROR: failed to export network tensor names!" << endl;
+      cerr << "------ERROR: Failed to export network tensor names!" << endl;
       return -1;
     }
   }
 
 
 // -------------------------------------------------------------------------
-// using builder to optimize network and generate engine
+// use tensorrt builder to optimize network and generate engine
 // -------------------------------------------------------------------------
+  cout << "\n========== Optimize Network and Generate Engine ==========" << endl;
   if (!Tparams.engine_filename.empty())
   {
     if(TBackend.build()){
-      cout << "------PASSED: generate the engine successfully!" << endl;
+      cout << "------PASSED: Generate the engine successfully!" << endl;
       return 0;
     }
     else{
-      cerr << "------ERROR: failed to build the engine!" << endl;
+      cerr << "------ERROR: Failed to build the engine!" << endl;
       return -1;
     }
   }
